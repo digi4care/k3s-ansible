@@ -1,5 +1,19 @@
 ---
-- name: Install Kubernetes packages
+# Debian/Ubuntu tasks
+- name: Add Kubernetes apt key (Debian/Ubuntu)
+  ansible.builtin.apt_key:
+    url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Add Kubernetes repository (Debian/Ubuntu)
+  ansible.builtin.apt_repository:
+    repo: deb https://apt.kubernetes.io/ kubernetes-xenial main
+    state: present
+    filename: kubernetes
+  when: ansible_os_family == "Debian"
+
+- name: Install Kubernetes packages (Debian/Ubuntu)
   ansible.builtin.apt:
     name:
       - kubelet
@@ -8,7 +22,7 @@
     state: present
   when: ansible_os_family == "Debian"
 
-- name: Hold Kubernetes packages
+- name: Hold Kubernetes packages (Debian/Ubuntu)
   ansible.builtin.dpkg_selections:
     name: "{{ item }}"
     selection: hold
@@ -18,6 +32,35 @@
     - kubectl
   when: ansible_os_family == "Debian"
 
+# Fedora/RedHat tasks
+- name: Add Kubernetes repository (Fedora/RedHat)
+  ansible.builtin.yum_repository:
+    name: kubernetes
+    description: Kubernetes repository
+    baseurl: https://packages.cloud.google.com/yum/repos/kubernetes-el7-$basearch
+    gpgkey: https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+    gpgcheck: yes
+    enabled: yes
+  when: ansible_os_family == "RedHat"
+
+- name: Install Kubernetes packages (Fedora/RedHat)
+  ansible.builtin.dnf:
+    name:
+      - kubelet
+      - kubeadm
+      - kubectl
+    state: present
+    disable_excludes: kubernetes
+  when: ansible_os_family == "RedHat"
+
+- name: Prevent Kubernetes packages from being upgraded (Fedora/RedHat)
+  ansible.builtin.lineinfile:
+    path: /etc/yum.conf
+    line: exclude=kubelet kubeadm kubectl
+    insertafter: '[main]'
+  when: ansible_os_family == "RedHat"
+
+# Common tasks
 - name: Enable kubelet service
   ansible.builtin.systemd:
     name: kubelet

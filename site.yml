@@ -27,9 +27,9 @@
     - role: container_runtime
     - role: kubernetes_packages
     - role: ubuntu
-      when: ansible_facts['distribution'] == "Ubuntu"
-    - role: debian
-      when: ansible_facts['distribution'] == "Debian"
+      when: ansible_os_family == "Debian"
+    - role: fedora
+      when: ansible_os_family == "RedHat"
 
 - name: Initialize Kubernetes control plane
   hosts: control_plane

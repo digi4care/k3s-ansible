@@ -1,4 +1,5 @@
 ---
+# Common tasks for all distributions
 - name: Disable swap
   ansible.builtin.command: swapoff -a
   changed_when: false
@@ -28,15 +29,45 @@
     - { name: 'net.bridge.bridge-nf-call-ip6tables', value: '1' }
     - { name: 'net.ipv4.ip_forward', value: '1' }
 
-- name: Add Kubernetes apt key
+# Create modules-load.d config
+- name: Create kubernetes.conf for module loading
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/kubernetes.conf
+    content: |
+      overlay
+      br_netfilter
+    mode: '0644'
+
+# Debian/Ubuntu specific tasks
+- name: Add Kubernetes apt key (Debian/Ubuntu)
   ansible.builtin.apt_key:
     url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
     state: present
   when: ansible_os_family == "Debian"
 
-- name: Add Kubernetes repository
+- name: Add Kubernetes repository (Debian/Ubuntu)
   ansible.builtin.apt_repository:
     repo: deb https://apt.kubernetes.io/ kubernetes-xenial main
     state: present
     filename: kubernetes
   when: ansible_os_family == "Debian"
+
+# Fedora/RedHat specific tasks
+- name: Add Kubernetes repository (Fedora/RedHat)
+  ansible.builtin.yum_repository:
+    name: kubernetes
+    description: Kubernetes repository
+    baseurl: https://packages.cloud.google.com/yum/repos/kubernetes-el7-$basearch
+    gpgkey: 
+      - https://packages.cloud.google.com/yum/doc/yum-key.gpg
+      - https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+    gpgcheck: yes
+    enabled: yes
+  when: ansible_os_family == "RedHat"
+
+# SELinux configuration for RedHat family
+- name: Set SELinux to permissive mode
+  ansible.builtin.selinux:
+    policy: targeted
+    state: permissive
+  when: ansible_os_family == "RedHat"

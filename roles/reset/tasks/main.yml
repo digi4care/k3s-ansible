@@ -1,51 +1,87 @@
 ---
-- name: Disable services
+# Reset Kubernetes cluster
+- name: Drain node
+  ansible.builtin.command: kubectl drain {{ ansible_hostname }} --ignore-daemonsets --delete-emptydir-data --force
+  failed_when: false
+  when: inventory_hostname in groups['kubernetes_cluster']
+
+- name: Reset kubeadm
+  ansible.builtin.command: kubeadm reset --force
+  failed_when: false
+
+- name: Disable and stop services
   ansible.builtin.systemd:
     name: "{{ item }}"
     state: stopped
     enabled: false
   failed_when: false
   with_items:
-    - k3s
-    - k3s-node
-    - k3s-init
+    - kubelet
+    - containerd
 
-- name: RUN pkill -9 -f "k3s/data/[^/]+/bin/containerd-shim-runc"
-  register: pkill_containerd_shim_runc
-  ansible.builtin.command: pkill -9 -f "k3s/data/[^/]+/bin/containerd-shim-runc"
-  changed_when: pkill_containerd_shim_runc.rc == 0
+- name: Kill all containers
+  ansible.builtin.shell: crictl ps -q | xargs -r crictl rm -f
   failed_when: false
 
-- name: Umount k3s filesystems
+- name: Remove containerd pods
+  ansible.builtin.shell: crictl pods -q | xargs -r crictl rmp -f
+  failed_when: false
+
+- name: Umount Kubernetes filesystems
   ansible.builtin.include_tasks: umount_with_children.yml
   with_items:
-    - /run/k3s
     - /var/lib/kubelet
     - /run/netns
-    - /var/lib/rancher/k3s
     - /var/lib/kubelet/pods
     - /var/lib/kubelet/plugins
     - /run/netns/cni-
   loop_control:
     loop_var: mounted_fs
 
-- name: Remove service files, binaries and data
+# OS-specific package removal
+- name: Remove Kubernetes packages (Debian/Ubuntu)
+  ansible.builtin.apt:
+    name:
+      - kubeadm
+      - kubelet
+      - kubectl
+    state: absent
+    purge: yes
+  when: ansible_os_family == "Debian"
+
+- name: Remove Kubernetes packages (Fedora/RedHat)
+  ansible.builtin.dnf:
+    name:
+      - kubeadm
+      - kubelet
+      - kubectl
+    state: absent
+  when: ansible_os_family == "RedHat"
+
+- name: Remove Kubernetes directories and files
   ansible.builtin.file:
     name: "{{ item }}"
     state: absent
   with_items:
-    - /usr/local/bin/k3s
-    - "{{ systemd_dir }}/k3s.service"
-    - "{{ systemd_dir }}/k3s-node.service"
-    - /etc/rancher/k3s
-    - /run/k3s
-    - /run/flannel
-    - /etc/rancher/
+    - /etc/kubernetes
     - /var/lib/kubelet
-    - /var/lib/rancher/k3s
-    - /var/lib/rancher/
-    - /var/lib/cni/
+    - /var/lib/etcd
+    - /var/lib/cni
     - /etc/cni/net.d
+    - /root/.kube
+    - /home/{{ ansible_user }}/.kube
+
+- name: Remove iptables rules
+  ansible.builtin.shell: |
+    iptables -F && iptables -t nat -F && iptables -t mangle -F && iptables -X
+  failed_when: false
+
+- name: Restart containerd
+  ansible.builtin.systemd:
+    name: containerd
+    state: restarted
+    daemon_reload: true
+  failed_when: false
 
 - name: Remove K3s http_proxy files
   ansible.builtin.file:
