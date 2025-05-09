@@ -1,19 +1,37 @@
 ---
-- name: Reset k3s cluster
-  hosts: k3s_cluster
+- name: Reset Kubernetes cluster
+  hosts: kubernetes_cluster
   gather_facts: true
-  roles:
-    - role: reset
-      become: true
-    - role: raspberrypi
-      become: true
-      vars: { state: absent }
-  post_tasks:
-    - name: Reboot and wait for node to come back up
-      become: true
-      ansible.builtin.reboot:
-        reboot_command: "{{ custom_reboot_command | default(omit) }}"
-        reboot_timeout: 3600
+  become: true
+  tasks:
+    - name: Reset kubeadm
+      ansible.builtin.command: kubeadm reset --force
+      failed_when: false
+
+    - name: Stop kubelet
+      ansible.builtin.systemd:
+        name: kubelet
+        state: stopped
+        enabled: false
+
+    - name: Remove Kubernetes packages
+      ansible.builtin.apt:
+        name:
+          - kubeadm
+          - kubelet
+          - kubectl
+        state: absent
+      when: ansible_os_family == "Debian"
+
+    - name: Remove Kubernetes directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - /etc/kubernetes
+        - /var/lib/kubelet
+        - /var/lib/etcd
+        - "{{ ansible_user_dir }}/.kube"
 
 - name: Revert changes to Proxmox cluster
   hosts: proxmox

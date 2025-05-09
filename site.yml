@@ -2,7 +2,7 @@
 - name: Pre tasks
   hosts: all
   pre_tasks:
-    - name: Verify Ansible is version 2.11 or above. (If this fails you may need to update Ansible)
+    - name: Verify Ansible is version 2.11 or above
       ansible.builtin.assert:
         that: ansible_version.full is version_compare('2.11', '>=')
         msg: >
@@ -17,49 +17,48 @@
     - role: proxmox_lxc
       when: proxmox_lxc_configure
 
-- name: Prepare k3s nodes
-  hosts: k3s_cluster
+- name: Prepare Kubernetes nodes
+  hosts: kubernetes_cluster
   gather_facts: true
+  become: true
   environment: "{{ proxy_env | default({}) }}"
   roles:
-    - role: lxc
-      become: true
-      when: proxmox_lxc_configure
-    - role: prereq
-      become: true
-    - role: download
-      become: true
-    - role: raspberrypi
-      become: true
-    - role: k3s_custom_registries
-      become: true
-      when: custom_registries
+    - role: kubernetes_prereq
+    - role: container_runtime
+    - role: kubernetes_packages
+    - role: ubuntu
+      when: ansible_facts['distribution'] == "Ubuntu"
+    - role: debian
+      when: ansible_facts['distribution'] == "Debian"
 
-- name: Setup k3s servers
-  hosts: master
+- name: Initialize Kubernetes control plane
+  hosts: control_plane
+  become: true
   environment: "{{ proxy_env | default({}) }}"
   roles:
-    - role: k3s_server
+    - role: kubernetes/control_plane
       become: true
 
-- name: Setup k3s agents
-  hosts: node
+- name: Join Kubernetes worker nodes
+  hosts: worker
+  become: true
   environment: "{{ proxy_env | default({}) }}"
   roles:
-    - role: k3s_agent
+    - role: kubernetes/worker
       become: true
 
-- name: Configure k3s cluster
-  hosts: master
+- name: Configure Kubernetes cluster
+  hosts: control_plane
   environment: "{{ proxy_env | default({}) }}"
   roles:
-    - role: k3s_server_post
+    - role: kubernetes/control_plane_post
       become: true
 
 - name: Storing kubeconfig in the playbook directory
-  hosts: master
+  hosts: control_plane
   environment: "{{ proxy_env | default({}) }}"
   tasks:
+    - name: Copying kubeconfig from {{ hostvars[groups[group_name_control_plane | default('control_plane')][0]]['ansible_hostname'] }}
     - name: Copying kubeconfig from {{ hostvars[groups[group_name_master | default('master')][0]]['ansible_hostname'] }}
       ansible.builtin.fetch:
         src: "{{ ansible_user_dir }}/.kube/config"

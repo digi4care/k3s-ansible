@@ -1,0 +1,6 @@
+---
+kubernetes_version: "1.28.0"
+kubernetes_package_version: "{{ kubernetes_version }}-00"
+kubeadm_extra_args: ""
+pod_network_cidr: "10.244.0.0/16"
+container_runtime_endpoint: "unix:///var/run/containerd/containerd.sock"

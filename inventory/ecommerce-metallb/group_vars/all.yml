@@ -14,7 +14,7 @@ network_interface: eth0
 
 # Container Network Interface (CNI) configuration
 # Choose one of: flannel, calico, or cilium
-cni_plugin: flannel
+cni_plugin: cilium  # Using Cilium for better performance
 
 # Calico CNI configuration (when cni_plugin: calico)
 calico_network_backend: bird  # Options: bird, vxlan
@@ -48,7 +48,16 @@ load_balancer_type: metallb  # Options: metallb, kube-vip
 # MetalLB Configuration (when load_balancer_type: metallb)
 metallb_version: v0.14.8
 metallb_mode: layer2  # Options: layer2, bgp
-metallb_address_pool: 192.168.30.80-192.168.30.90
+# E-commerce specific MetalLB pools
+metallb_address_pools:
+  shop_frontend: "192.168.30.210-192.168.30.215"  # Customer-facing services
+  shop_backend: "192.168.30.216-192.168.30.220"   # Admin/API services
+
+# E-commerce specific resource requirements
+control_plane_memory: "8192M"  # 8GB for control plane
+worker_memory: "16384M"        # 16GB for workers
+control_plane_cpu: "4"         # 4 CPUs for control plane
+worker_cpu: "8"               # 8 CPUs for workers
 
 # MetalLB BGP Configuration (when metallb_mode: bgp)
 metallb_bgp_enabled: false

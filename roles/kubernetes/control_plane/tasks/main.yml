@@ -1,0 +1,38 @@
+---
+- name: Initialize Kubernetes control-plane
+  ansible.builtin.command: >
+    kubeadm init
+    --pod-network-cidr=10.244.0.0/16
+    --cri-socket unix:///var/run/containerd/containerd.sock
+    {{ kubeadm_extra_args | default('') }}
+  register: kubeadm_init
+  changed_when: kubeadm_init.rc == 0
+
+- name: Create .kube directory
+  ansible.builtin.file:
+    path: "{{ ansible_user_dir }}/.kube"
+    state: directory
+    mode: '0755'
+
+- name: Copy admin.conf to user's kube config
+  ansible.builtin.copy:
+    src: /etc/kubernetes/admin.conf
+    dest: "{{ ansible_user_dir }}/.kube/config"
+    remote_src: true
+    mode: '0600'
+
+- name: Get join command
+  ansible.builtin.command: kubeadm token create --print-join-command
+  register: join_command
+  changed_when: false
+
+- name: Set join command fact
+  ansible.builtin.set_fact:
+    join_command: "{{ join_command.stdout }}"
+
+- name: Install Flannel CNI
+  ansible.builtin.command: >
+    kubectl apply -f https://raw.githubusercontent.com/flannel-io/flannel/master/Documentation/kube-flannel.yml
+  changed_when: false
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf

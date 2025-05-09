@@ -1,0 +1,8 @@
+---
+- name: Join worker node to cluster
+  ansible.builtin.command: "{{ hostvars[groups['control_plane'][0]]['join_command'] }} --cri-socket unix:///var/run/containerd/containerd.sock"
+  register: worker_join
+  changed_when: worker_join.rc == 0
+  failed_when: 
+    - worker_join.rc != 0 
+    - "'already exists' not in worker_join.stderr"

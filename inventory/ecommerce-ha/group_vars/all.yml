@@ -14,7 +14,7 @@ network_interface: eth0
 
 # Container Network Interface (CNI) configuration
 # Choose one of: flannel, calico, or cilium
-cni_plugin: flannel
+cni_plugin: calico  # Using Calico for network policies and security
 
 # Calico CNI configuration (when cni_plugin: calico)
 calico_network_backend: bird  # Options: bird, vxlan
@@ -43,7 +43,7 @@ kube_vip_interface: "{{ network_interface }}"
 kube_vip_address: 192.168.30.222  # Virtual IP for the control plane
 
 # Load Balancer Selection
-load_balancer_type: metallb  # Options: metallb, kube-vip
+load_balancer_type: kube-vip  # Using kube-vip for consistent failover
 
 # MetalLB Configuration (when load_balancer_type: metallb)
 metallb_version: v0.14.8
@@ -52,6 +52,18 @@ metallb_address_pool: 192.168.30.80-192.168.30.90
 
 # MetalLB BGP Configuration (when metallb_mode: bgp)
 metallb_bgp_enabled: false
+
+# E-commerce HA specific kube-vip ranges
+kube_vip_service_ranges:
+  shop_frontend: "192.168.30.251-192.168.30.255"  # Customer-facing services
+  shop_api: "192.168.30.240-192.168.30.245"       # API endpoints
+  shop_admin: "192.168.30.246-192.168.30.249"     # Admin interface
+
+# E-commerce HA specific resource requirements
+control_plane_memory: "8192M"  # 8GB for reliable control plane
+worker_memory: "16384M"        # 16GB for high-performance workers
+control_plane_cpu: "4"         # 4 CPUs for control plane
+worker_cpu: "8"               # 8 CPUs for intensive workloads
 metallb_bgp_my_asn: "64513"
 metallb_bgp_peer_asn: "64512"
 metallb_bgp_peer_address: "192.168.30.1"
