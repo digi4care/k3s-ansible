@@ -25,10 +25,19 @@
     - role: lxc
       become: true
       when: proxmox_lxc_configure
-    - role: kubernetes_prereq
+    - role: prereq
       become: true
+    - role: fedora
+      become: true
+      when: ansible_os_family in [ "RedHat", "Suse" ]
+    - role: ubuntu
+      become: true
+      when: ansible_os_family == "Debian"
     - role: download
       become: true
+    - role: custom_registries
+      become: true
+      when: custom_registries
 
 # - name: Initialize Kubernetes control plane
 #   hosts: control_plane

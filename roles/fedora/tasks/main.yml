@@ -1,29 +1,45 @@
 ---
 # Fedora/RedHat specific tasks
-- name: Update dnf cache
-  dnf:
-    update_cache: yes
 
-- name: Install required packages for Fedora/RedHat
-  dnf:
-    name:
-      - dnf-plugins-core
-      - container-selinux
-      - device-mapper-persistent-data
-      - lvm2
-    state: present
+# SELinux configuration for RedHat family
+- name: Set SELinux to permissive mode
+  ansible.builtin.selinux:
+    policy: targeted
+    state: permissive
 
 - name: Configure system settings for Kubernetes
-  sysctl:
+  ansible.posix.sysctl:
     name: "{{ item.name }}"
     value: "{{ item.value }}"
     state: present
-    sysctl_file: /etc/sysctl.d/99-kubernetes.conf
+    reload: yes
   with_items:
-    - { name: 'net.bridge.bridge-nf-call-iptables', value: '1' }
-    - { name: 'net.ipv4.ip_forward', value: '1' }
-    - { name: 'net.bridge.bridge-nf-call-ip6tables', value: '1' }
+    - { name: "net.bridge.bridge-nf-call-iptables", value: "1" }
+    - { name: "net.ipv4.ip_forward", value: "1" }
+    - { name: "net.bridge.bridge-nf-call-ip6tables", value: "1" }
+    - { name: "net.ipv6.conf.all.forwarding", value: "1" }
+    - { name: "net.ipv6.conf.all.accept_ra", value: "2" }
 
-- name: Disable SELinux
-  selinux:
-    state: disabled
+- name: Add br_netfilter to /etc/modules-load.d/
+  ansible.builtin.copy:
+    content: br_netfilter
+    dest: /etc/modules-load.d/br_netfilter.conf
+    mode: u=rw,g=,o=
+
+- name: Load br_netfilter
+  community.general.modprobe:
+    name: br_netfilter
+    state: present
+
+- name: Add /usr/local/bin to sudo secure_path
+  ansible.builtin.lineinfile:
+    line: Defaults    secure_path = {{ secure_path[ansible_os_family] }}
+    regexp: Defaults(\s)*secure_path(\s)*=
+    state: present
+    insertafter: EOF
+    path: /etc/sudoers
+    validate: visudo -cf %s
+
+- name: Update dnf cache
+  ansible.builtin.command:
+    cmd: dnf update -y

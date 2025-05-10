@@ -174,8 +174,13 @@ proxmox_lxc_ct_ids:
 # Can be beneficial for larger dev/test environments (for example if you're getting rate limited by docker hub),
 # or air-gapped environments where your nodes don't have internet access after the initial setup
 # (which is still needed for downloading the k8s binary and such).
-# k8s's documentation about private registries here: https://docs.k8s.io/installation/private-registry
+# k8s's documentation about private registries here: https://docs.k3s.io/installation/private-registry
 custom_registries: false
+
+# Registry credentials (required if custom_registries is true)
+registry_username: "yourusername"
+registry_password: "yourpassword"
+registry_email: "your.email@example.com"
 # The registries can be authenticated or anonymous, depending on your registry server configuration.
 # If they allow anonymous access, simply remove the following bit from custom_registries_yaml
 #   configs:
@@ -189,25 +194,17 @@ custom_registries: false
 # If all you need is your own images and you don't care about caching the docker/quay/ghcr.io images,
 # you can just remove those from the mirrors: section.
 custom_registries_yaml: |
-  mirrors:
-    docker.io:
-      endpoint:
-        - "https://registry.domain.com/v2/dockerhub"
-    quay.io:
-      endpoint:
-        - "https://registry.domain.com/v2/quayio"
-    ghcr.io:
-      endpoint:
-        - "https://registry.domain.com/v2/ghcrio"
-    registry.domain.com:
-      endpoint:
-        - "https://registry.domain.com"
-
-  configs:
-    "registry.domain.com":
-      auth:
-        username: yourusername
-        password: yourpassword
+  {
+    "auths": {
+      "registry.domain.com": {
+        "auth": "{{ (registry_username + ':' + registry_password) | b64encode }}",
+        "email": "{{ registry_email }}"
+      }
+    },
+    "HttpHeaders": {
+      "User-Agent": "Docker-Client/19.03.8 (linux)"
+    }
+  }
 
 # On some distros like Diet Pi, there is no dbus installed. dbus required by the default reboot command.
 # Uncomment if you need a custom reboot command

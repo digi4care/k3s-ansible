@@ -1,0 +1,18 @@
+version = 2
+
+[plugins."io.containerd.grpc.v1.cri".registry]
+  config_path = ""
+
+[plugins."io.containerd.grpc.v1.cri".registry.configs]{% if custom_registries %}
+{% for registry, config in custom_registries_yaml.configs.items() %}
+  [plugins."io.containerd.grpc.v1.cri".registry.configs."{{ registry }}"]
+    [plugins."io.containerd.grpc.v1.cri".registry.configs."{{ registry }}".auth]
+      username = "{{ config.auth.username }}"
+      password = "{{ config.auth.password }}"
+{% endfor %}{% endif %}
+
+[plugins."io.containerd.grpc.v1.cri".registry.mirrors]{% if custom_registries %}
+{% for registry, mirror in custom_registries_yaml.mirrors.items() %}
+  [plugins."io.containerd.grpc.v1.cri".registry.mirrors."{{ registry }}"]
+    endpoint = {{ mirror.endpoint | to_json }}
+{% endfor %}{% endif %}
