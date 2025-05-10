@@ -87,11 +87,23 @@
   failed_when: dnf_result.rc != 0
   when: ansible_os_family == "RedHat"
 
-- name: Enable the kubelet service before running kubeadm (RedHat)
+- name: Enable and start the kubelet service (RedHat)
   ansible.builtin.service:
     name: kubelet
     state: started
     enabled: yes
+  when: ansible_os_family == "RedHat"
+
+- name: Check kubelet service status (RedHat)
+  ansible.builtin.command: systemctl is-active kubelet
+  register: kubelet_status
+  changed_when: false
+  failed_when: false
+  when: ansible_os_family == "RedHat"
+
+- name: Show kubelet status
+  ansible.builtin.debug:
+    msg: "Kubelet service status: {{ kubelet_status.stdout }}"
   when: ansible_os_family == "RedHat"
 
 
