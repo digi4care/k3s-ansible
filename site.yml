@@ -58,8 +58,7 @@
   hosts: control_plane
   environment: "{{ proxy_env | default({}) }}"
   tasks:
-    - name: Copying kubeconfig from {{ hostvars[groups[group_name_control_plane | default('control_plane')][0]]['ansible_hostname'] }}
-    - name: Copying kubeconfig from {{ hostvars[groups[group_name_master | default('master')][0]]['ansible_hostname'] }}
+    - name: "Copying kubeconfig from {{ hostvars[groups['control_plane'][0]]['ansible_hostname'] }}"
       ansible.builtin.fetch:
         src: "{{ ansible_user_dir }}/.kube/config"
         dest: ./kubeconfig
