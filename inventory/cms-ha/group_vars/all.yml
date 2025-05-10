@@ -4,6 +4,11 @@ kubernetes_version: v1.30.2
 
 # SSH access configuration
 ansible_user: ansibleuser
+
+# ssh private key file
+ansible_ssh_private_key_file: "~/.ssh/id_ed25519_proxmox_virtual_machine"
+
+# systemd directory
 systemd_dir: /etc/systemd/system
 
 # System configuration
