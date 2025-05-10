@@ -18,49 +18,48 @@
       when: proxmox_lxc_configure
 
 - name: Prepare Kubernetes nodes
-  hosts: kubernetes_cluster
+  hosts: k8s_cluster
   gather_facts: true
-  become: true
   environment: "{{ proxy_env | default({}) }}"
   roles:
+    - role: lxc
+      become: true
+      when: proxmox_lxc_configure
     - role: kubernetes_prereq
-    - role: container_runtime
-    - role: kubernetes_packages
-    - role: ubuntu
-      when: ansible_os_family == "Debian"
-    - role: fedora
-      when: ansible_os_family == "RedHat"
-
-- name: Initialize Kubernetes control plane
-  hosts: control_plane
-  become: true
-  environment: "{{ proxy_env | default({}) }}"
-  roles:
-    - role: kubernetes/control_plane
+      become: true
+    - role: download
       become: true
 
-- name: Join Kubernetes worker nodes
-  hosts: worker
-  become: true
-  environment: "{{ proxy_env | default({}) }}"
-  roles:
-    - role: kubernetes/worker
-      become: true
+# - name: Initialize Kubernetes control plane
+#   hosts: control_plane
+#   become: true
+#   environment: "{{ proxy_env | default({}) }}"
+#   roles:
+#     - role: kubernetes/control_plane
+#       become: true
 
-- name: Configure Kubernetes cluster
-  hosts: control_plane
-  environment: "{{ proxy_env | default({}) }}"
-  roles:
-    - role: kubernetes/control_plane_post
-      become: true
+# - name: Join Kubernetes worker nodes
+#   hosts: worker
+#   become: true
+#   environment: "{{ proxy_env | default({}) }}"
+#   roles:
+#     - role: kubernetes/worker
+#       become: true
 
-- name: Storing kubeconfig in the playbook directory
-  hosts: control_plane
-  environment: "{{ proxy_env | default({}) }}"
-  tasks:
-    - name: "Copying kubeconfig from {{ hostvars[groups['control_plane'][0]]['ansible_hostname'] }}"
-      ansible.builtin.fetch:
-        src: "{{ ansible_user_dir }}/.kube/config"
-        dest: ./kubeconfig
-        flat: true
-      when: ansible_hostname == hostvars[groups[group_name_master | default('master')][0]]['ansible_hostname']
+# - name: Configure Kubernetes cluster
+#   hosts: control_plane
+#   environment: "{{ proxy_env | default({}) }}"
+#   roles:
+#     - role: kubernetes/control_plane_post
+#       become: true
+
+# - name: Storing kubeconfig in the playbook directory
+#   hosts: control_plane
+#   environment: "{{ proxy_env | default({}) }}"
+#   tasks:
+#     - name: "Copying kubeconfig from {{ hostvars[groups['control_plane'][0]]['ansible_hostname'] }}"
+#       ansible.builtin.fetch:
+#         src: "{{ ansible_user_dir }}/.kube/config"
+#         dest: ./kubeconfig
+#         flat: true
+#       when: ansible_hostname == hostvars[groups[group_name_master | default('master')][0]]['ansible_hostname']

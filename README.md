@@ -68,7 +68,7 @@ This Ansible playbook automates the deployment of a production-ready Kubernetes 
    192.168.1.22      # Worker node 2
    192.168.1.23      # Worker node 3
 
-   [kubernetes_cluster:children]
+   [k8s_cluster:children]
    control_plane
    worker
    ```

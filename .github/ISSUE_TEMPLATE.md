@@ -74,7 +74,7 @@ IP.ADDRESS.THREE
 IP.ADDRESS.FOUR
 IP.ADDRESS.FIVE
 
-[k3s_cluster:children]
+[k8s_cluster:children]
 master
 node
 ```

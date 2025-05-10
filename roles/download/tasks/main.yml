@@ -1,0 +1,97 @@
+---
+# Debian/Ubuntu specific tasks
+- name: Install packages needed to use the Kubernetes apt repository (Debian/Ubuntu)
+  ansible.builtin.apt:
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - apt-transport-https
+    - ca-certificates
+    - curl
+    - gpg
+  when: ansible_os_family == "Debian"
+
+- name: Create kubernetes apt keyring directory (Debian/Ubuntu)
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+  when: ansible_os_family == "Debian"
+
+- name: Add Kubernetes apt key (Debian/Ubuntu)
+  ansible.builtin.get_url:
+    url: https://pkgs.k8s.io/core:/stable:/{{ k8s_version }}/deb/Release.key
+    dest: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+    mode: '0644'
+  when: ansible_os_family == "Debian"
+
+- name: Add Kubernetes repository (Debian/Ubuntu)
+  ansible.builtin.lineinfile:
+    line: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/{{ k8s_version }}/deb/ /"
+    path: /etc/apt/sources.list.d/kubernetes.list
+    create: yes
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Update the apt package index (Debian/Ubuntu)
+  ansible.builtin.apt:
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+
+- name: Install kubelet, kubeadm and kubectl (Debian/Ubuntu)
+  ansible.builtin.apt:
+    name:
+      - kubelet
+      - kubeadm
+      - kubectl
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Pin the version of kubelet, kubeadm and kubectl (Debian/Ubuntu)
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  with_items:
+    - kubelet
+    - kubeadm
+    - kubectl
+  when: ansible_os_family == "Debian"
+
+- name: Enable the kubelet service before running kubeadm (Debian/Ubuntu)
+  ansible.builtin.service:
+    name: kubelet
+    state: started
+    enabled: yes
+  when: ansible_os_family == "Debian"
+
+
+# Fedora/RedHat specific tasks
+- name: Create kubernetes repository file (RedHat)
+  ansible.builtin.blockinfile:
+    block: |
+      [kubernetes]
+      name=Kubernetes
+      baseurl=https://pkgs.k8s.io/core:/stable:/{{ k8s_version }}/rpm/
+      enabled=1
+      gpgcheck=1
+      gpgkey=https://pkgs.k8s.io/core:/stable:/{{ k8s_version }}/rpm/repodata/repomd.xml.key
+      exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni
+    path: /etc/yum.repos.d/kubernetes.repo
+    create: yes
+  when: ansible_os_family == "RedHat"
+
+- name: Install kubelet, kubeadm and kubectl (RedHat/Fedora)
+  ansible.builtin.command: dnf install -y kubelet kubeadm kubectl --disable-plugin=excludes
+  register: dnf_result
+  changed_when: dnf_result.rc == 0 and 'Nothing to do.' not in dnf_result.stdout
+  failed_when: dnf_result.rc != 0
+  when: ansible_os_family == "RedHat"
+
+- name: Enable the kubelet service before running kubeadm (RedHat)
+  ansible.builtin.service:
+    name: kubelet
+    state: started
+    enabled: yes
+  when: ansible_os_family == "RedHat"
+
+

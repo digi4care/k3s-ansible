@@ -1,25 +1,27 @@
 ---
-# Kubernetes version to install
-kubernetes_version: v1.30.2
+k8s_version: v1.32
 
-# SSH access configuration
-ansible_user: ansibleuser
+# this is the user that has ssh access to these machines
+ansible_user: serveradmin
 
 # ssh private key file
-ansible_ssh_private_key_file: "/path/to/your/private/key"
+ansible_ssh_private_key_file: "~/.ssh/id_ed25519_proxmox_virtual_machine"
+
+# ssh extra args
+ansible_ssh_extra_args: '-o StrictHostKeyChecking=no'
 
 # systemd directory
 systemd_dir: /etc/systemd/system
 
-# System configuration
+# Set your timezone
 system_timezone: Europe/Amsterdam
 
-# Network configuration
-network_interface: eth0
+# interface which will be used for flannel
+flannel_iface: eth0
 
 # Container Network Interface (CNI) configuration
 # Choose one of: flannel, calico, or cilium
-cni_plugin: flannel
+cni_plugin: calico  # Using Calico for better network policies
 
 # Calico CNI configuration (when cni_plugin: calico)
 calico_network_backend: bird  # Options: bird, vxlan
@@ -48,7 +50,7 @@ kube_vip_interface: "{{ network_interface }}"
 kube_vip_address: 192.168.30.222  # Virtual IP for the control plane
 
 # Load Balancer Selection
-load_balancer_type: metallb  # Options: metallb, kube-vip
+load_balancer_type: kube-vip  # Using kube-vip for predictable IPs
 
 # MetalLB Configuration (when load_balancer_type: metallb)
 metallb_version: v0.14.8
@@ -57,6 +59,17 @@ metallb_address_pool: 192.168.30.80-192.168.30.90
 
 # MetalLB BGP Configuration (when metallb_mode: bgp)
 metallb_bgp_enabled: false
+
+# CMS-specific kube-vip ranges
+kube_vip_service_ranges:
+  frontend: "192.168.30.150-192.168.30.155"  # CMS frontend services
+  admin: "192.168.30.156-192.168.30.160"     # Admin interfaces
+
+# CMS-specific resource requirements
+control_plane_memory: "4096M"  # 4GB sufficient for control plane
+worker_memory: "8192M"         # 8GB for workers
+control_plane_cpu: "2"         # 2 CPUs for control plane
+worker_cpu: "4"               # 4 CPUs for workers
 metallb_bgp_my_asn: "64513"
 metallb_bgp_peer_asn: "64512"
 metallb_bgp_peer_address: "192.168.30.1"
@@ -70,124 +83,138 @@ metrics_server_version: v0.7.0
 enable_dashboard: false
 dashboard_version: v3.0.0
 
-# Kubernetes control plane configuration
-control_plane_endpoint: "{{ apiserver_endpoint }}:6443"
-kubeadm_token: some-SUPER-DEDEUPER-secret-password  # This token will be used for node joining
+# apiserver_endpoint is virtual ip-address which will be configured on each master
+apiserver_endpoint: 192.168.30.222
 
-# Node configuration
-node_ip: "{{ ansible_facts[network_interface]['ipv4']['address'] }}"
-control_plane_taint: "{{ true if groups['worker'] | default([]) | length >= 1 else false }}"
+# k8s_token is required  masters can talk together securely
+# this token should be alpha numeric only
+k8s_token: 2WT3d580MGS1VF63cgVXddjXD2wut58RYTxxXbkcx1pQ86aftk8brIxn65nQUAo2
 
-# Kubeadm configuration
-kubeadm_init_config: |
-  apiVersion: kubeadm.k8s.io/v1beta3
-  kind: InitConfiguration
-  nodeRegistration:
-    name: "{{ inventory_hostname }}"
-    criSocket: "unix:///var/run/containerd/containerd.sock"
-    taints:
-      - key: node-role.kubernetes.io/control-plane
-        effect: NoSchedule
-        value: ""
+# The IP on which the node is reachable in the cluster.
+# Here, a sensible default is provided, you can still override
+# it for each of your hosts, though.
+k8s_node_ip: "{{ ansible_facts[(cilium_iface | default(calico_iface | default(flannel_iface)))]['ipv4']['address'] }}"
 
-kubeadm_cluster_config: |
-  apiVersion: kubeadm.k8s.io/v1beta3
-  kind: ClusterConfiguration
-  kubernetesVersion: "{{ kubernetes_version }}"
-  controlPlaneEndpoint: "{{ control_plane_endpoint }}"
-  networking:
-    podSubnet: "{{ calico_ipv4pool_cidr if cni_plugin == 'calico' else cluster_cidr }}"
-    serviceSubnet: "{{ service_cidr }}"
-  apiServer:
-    extraArgs:
-      authorization-mode: Node,RBAC
-  controllerManager:
-    extraArgs:
-      bind-address: 0.0.0.0
-  scheduler:
-    extraArgs:
-      bind-address: 0.0.0.0
-  etcd:
-    local:
-      extraArgs:
-        listen-metrics-urls: http://0.0.0.0:2381
+# Disable the taint manually by setting: k8s_master_taint = false
+k8s_master_taint: "{{ true if groups['node'] | default([]) | length >= 1 else false }}"
 
+# these arguments are recommended for servers as well as agents:
+extra_args: >-
+  {{ '--flannel-iface=' + flannel_iface if calico_iface is not defined and cilium_iface is not defined else '' }}
+  --node-ip={{ k8s_node_ip }}
 
+# change these to your liking, the only required are: --disable servicelb, --tls-san {{ apiserver_endpoint }}
+# the contents of the if block is also required if using calico or cilium
+extra_server_args: >-
+  {{ extra_args }}
+  {{ '--node-taint node-role.kubernetes.io/master=true:NoSchedule' if k8s_master_taint else '' }}
+  {% if calico_iface is defined or cilium_iface is defined %}
+  --flannel-backend=none
+  --disable-network-policy
+  --cluster-cidr={{ cluster_cidr | default('10.52.0.0/16') }}
+  {% endif %}
+  --tls-san {{ apiserver_endpoint }}
+  --disable servicelb
+  --disable traefik
 
-# Proxmox LXC Configuration
-# IMPORTANT: Read this documentation before using Proxmox LXC containers:
-# https://gist.github.com/triangletodd/02f595cd4c0dc9aac5f7763ca2264185
-#
-# Key requirements for Proxmox LXC containers with Kubernetes:
-# 1. Containers MUST be privileged
-# 2. Nesting MUST be disabled (nesting: 0)
-# 3. Container security features will be modified to support Kubernetes
-# 4. Resource efficiency: LXC containers use significantly less resources than VMs
-#
-# Note: Mixing VMs and LXC containers in the same cluster is not recommended.
-# Only use LXC if you need the resource efficiency (e.g., low-powered Proxmox nodes)
+extra_agent_args: >-
+  {{ extra_args }}
 
-proxmox_enabled: false
-proxmox_user: root
+# image tag for kube-vip
+kube_vip_tag_version: v0.9.0
 
-# Container IDs and IP addresses for Proxmox LXC nodes
-proxmox_containers:
-  control_plane:
-    - id: 200
-      ip: 192.168.30.38
-      cpu: 2       # Number of CPU cores
-      memory: 2048 # Memory in MB
-    - id: 201
-      ip: 192.168.30.39
-      cpu: 2
-      memory: 2048
-    - id: 202
-      ip: 192.168.30.40
-      cpu: 2
-      memory: 2048
-  worker:
-    - id: 203
-      ip: 192.168.30.41
-      cpu: 4
-      memory: 4096
-    - id: 204
-      ip: 192.168.30.42
-      cpu: 4
-      memory: 4096
+# tag for kube-vip-cloud-provider manifest
+# kube_vip_cloud_provider_tag_version: "main"
 
-# Container Registry Configuration
-# Enable if using private registry for caching or air-gapped environments
-registry_enabled: false
+# kube-vip ip range for load balancer
+# (uncomment to use kube-vip for services instead of MetalLB)
+# kube_vip_lb_ip_range: "192.168.30.80-192.168.30.90"
 
-# Registry configuration example
-registry_config: |
+# metallb type frr or native
+metal_lb_type: native
+
+# metallb mode layer2 or bgp
+metal_lb_mode: layer2
+
+# bgp options
+# metal_lb_bgp_my_asn: "64513"
+# metal_lb_bgp_peer_asn: "64512"
+# metal_lb_bgp_peer_address: "192.168.30.1"
+
+# image tag for metal lb
+metal_lb_speaker_tag_version: v0.14.9
+metal_lb_controller_tag_version: v0.14.9
+
+# metallb ip range for load balancer
+metal_lb_ip_range: 192.168.30.80-192.168.30.90
+
+# Only enable if your nodes are proxmox LXC nodes, make sure to configure your proxmox nodes
+# in your hosts.ini file.
+# Please read https://gist.github.com/triangletodd/02f595cd4c0dc9aac5f7763ca2264185 before using this.
+# Most notably, your containers must be privileged, and must not have nesting set to true.
+# Please note this script disables most of the security of lxc containers, with the trade off being that lxc
+# containers are significantly more resource efficient compared to full VMs.
+# Mixing and matching VMs and lxc containers is not supported, ymmv if you want to do this.
+# I would only really recommend using this if you have particularly low powered proxmox nodes where the overhead of
+# VMs would use a significant portion of your available resources.
+proxmox_lxc_configure: false
+# the user that you would use to ssh into the host, for example if you run ssh some-user@my-proxmox-host,
+# set this value to some-user
+proxmox_lxc_ssh_user: root
+# the unique proxmox ids for all of the containers in the cluster, both worker and master nodes
+proxmox_lxc_ct_ids:
+  - 200
+  - 201
+  - 202
+  - 203
+  - 204
+
+# Only enable this if you have set up your own container registry to act as a mirror / pull-through cache
+# (harbor / nexus / docker's official registry / etc).
+# Can be beneficial for larger dev/test environments (for example if you're getting rate limited by docker hub),
+# or air-gapped environments where your nodes don't have internet access after the initial setup
+# (which is still needed for downloading the k8s binary and such).
+# k8s's documentation about private registries here: https://docs.k8s.io/installation/private-registry
+custom_registries: false
+# The registries can be authenticated or anonymous, depending on your registry server configuration.
+# If they allow anonymous access, simply remove the following bit from custom_registries_yaml
+#   configs:
+#     "registry.domain.com":
+#       auth:
+#         username: yourusername
+#         password: yourpassword
+# The following is an example that pulls all images used in this playbook through your private registries.
+# It also allows you to pull your own images from your private registry, without having to use imagePullSecrets
+# in your deployments.
+# If all you need is your own images and you don't care about caching the docker/quay/ghcr.io images,
+# you can just remove those from the mirrors: section.
+custom_registries_yaml: |
   mirrors:
     docker.io:
       endpoint:
-        - "https://registry.example.com/v2/docker"
+        - "https://registry.domain.com/v2/dockerhub"
     quay.io:
       endpoint:
-        - "https://registry.example.com/v2/quay"
+        - "https://registry.domain.com/v2/quayio"
     ghcr.io:
       endpoint:
-        - "https://registry.example.com/v2/ghcr"
-    registry.example.com:
+        - "https://registry.domain.com/v2/ghcrio"
+    registry.domain.com:
       endpoint:
-        - "https://registry.example.com"
+        - "https://registry.domain.com"
 
   configs:
-    "registry.example.com":
+    "registry.domain.com":
       auth:
-        username: "your-username"
-        password: "your-password"
+        username: yourusername
+        password: yourpassword
 
-# System Configuration
-
-# Custom reboot command (if dbus is not available)
+# On some distros like Diet Pi, there is no dbus installed. dbus required by the default reboot command.
+# Uncomment if you need a custom reboot command
 # custom_reboot_command: /usr/sbin/shutdown -r now
 
-# Proxy Configuration (if required)
-# proxy_settings:
-#   http_proxy: "http://proxy.example.com:3128"
-#   https_proxy: "http://proxy.example.com:3128"
-#   no_proxy: "localhost,127.0.0.1,.example.com,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+# Only enable and configure these if you access the internet through a proxy
+# proxy_env:
+#   HTTP_PROXY: "http://proxy.domain.local:3128"
+#   HTTPS_PROXY: "http://proxy.domain.local:3128"
+#   NO_PROXY: "*.domain.local,127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"

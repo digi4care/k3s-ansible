@@ -1,6 +1,6 @@
 ---
 - name: Reset Kubernetes cluster
-  hosts: kubernetes_cluster
+  hosts: k8s_cluster
   gather_facts: true
   become: true
   tasks:

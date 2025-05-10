@@ -1,0 +1,8 @@
+---
+argument_specs:
+  main:
+    short_description: Manage the downloading of kubeadm
+    options:
+      k8s_version:
+        description: The desired version of kubeadm
+        required: true
